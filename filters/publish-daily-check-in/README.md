@@ -1,6 +1,6 @@
 # Publish daily check-in
 
-Version 0.2.1 by Marvin. The [filter.py](filter.py) posts an assistant answer to a configured webhook when the latest user message contains a marker. After a successful HTTP response, it can schedule the chat for deletion. It returns the original conversation body unchanged.
+The [filter.py](filter.py) posts an assistant answer to a configured webhook when the latest user message contains a marker. After a successful HTTP response, it can schedule the chat for deletion. It returns the original conversation body unchanged.
 
 Version 0.2.1 retains references to scheduled deletion tasks until they finish, preventing them from being garbage-collected while pending. The valves and their defaults are unchanged from 0.2.0.
 
