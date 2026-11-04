@@ -1,0 +1,4 @@
+.config.json
+.env
+.ow-*
+__pycache__/
