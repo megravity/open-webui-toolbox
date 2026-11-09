@@ -1,154 +1,191 @@
 # PLAN — open-webui-toolbox as the authoritative home for Open WebUI customizations
 
-Status: proposal, not yet implemented. Target instance: Open WebUI 0.13.2 (re-verify adapter endpoints against it when building; some facts below come from current upstream `main` and can drift).
+Status: proposal, revised after an instance-agent review of 2026-11-08 (see
+"Design decisions" for what that review changed). Target instance: Open WebUI
+0.13.2 (re-verify adapter endpoints against it when building; some facts come
+from current upstream `main` and can drift).
 
 ## Goal
 
-`open-webui-toolbox` becomes the authoritative home for an instance's customizations.
-All customization types are tracked in this repo as files; state outside the repo
-records what was synced, so that:
+`open-webui-toolbox` becomes the authoritative home for an instance's
+customizations: all customization types tracked in this repo as files, git
+history the change log, with a two-way tool (`ow fetch` / `ow status` /
+`ow push`) built on one integrated `ow` binary. The raw API client stays
+importable underneath management commands.
 
-- `fetch` pulls current customizations from the instance into files (instance → repo).
-- `push` conservatively applies local files to the instance (repo → instance), first-class for Python code resources, standard for record-style resources.
-- Git history is the change log; each commit is a reviewable step.
-
-The raw authenticated API client and the management tooling are one integrated `ow`
-binary: raw request passthrough stays available, customization commands are built
-on top of the same client.
+Boundary statement: "authoritative" applies to each customization's own
+fields. Model records reference knowledge bases, files, and tools by
+*instance-local IDs*; the repo is authoritative for the model's own fields,
+not for what its references point at (see D9).
 
 ## Current state
 
 | Component | Path | Role |
 | --- | --- | --- |
-| Raw API client | `cli/ow` | `setup`, `get/post/put/patch/delete`, chat/automation shortcuts, pagination, `jq` formatting, no-redirect policy |
-| Function sync | `functions/sync.py` | Conservative, one-directional (local → remote) updates of registered functions; manifest-driven; baseline hashes outside the repo |
-| Manifest | `functions/manifest.json` | Function ID → local path mapping (one entry: `publish_daily_check_in` → `filters/publish-daily-check-in/filter.py`) |
-| Function sources | `filters/` | Current customization sources live here |
-| Visual style | `visual-style/` | Reference assets; not API-managed, unchanged by this plan |
+| Launcher | `cli/ow` | Thin shim over the `ow` package |
+| Raw client | `ow/client.py`, `ow/config.py` | `setup`, `get/post/put/patch/delete`, chat/automation shortcuts, pagination, no-redirect policy |
+| Function sync | `functions/sync.py` | Conservative local → remote updates from `registry.json` |
+| Registry | `registry.json` | `{type: {id: file}}` maps; function sources under `filters/` |
+| Visual style | `visual-style/` | Reference assets; not API-managed |
 
-Integration issue today: `sync.py` already loads `cli/ow` via `runpy` to reuse
-`load_config` and `NoRedirects` — two disconnected pieces pretending to be one.
-
-## Verified API surface (per Open WebUI source, 0.12.5 era)
-
-Endpoint paths relative to the instance base URL. Single-item paths are common to
-all types where equal: `/api/v1/{type}/id/{id}` with `/update` and `/delete`.
+## Verified API surface (per Open WebUI source, 0.13.2 era)
 
 | Type | Shape | Key endpoints |
 | --- | --- | --- |
-| Functions | Python `content`, `name`, `meta`, `type` (filter/pipe/action), `is_active`, `is_global` | `GET /api/v1/functions/list`, `GET /api/v1/functions/id/{id}`, `POST.../update` |
-| Tools | Python `content` + server-generated `specs`, `name`, `meta` | `GET /api/v1/tools/` (fronted by `src/lib/apis/tools`), `GET /api/v1/tools/id/{id}`, `POST.../update` |
-| Models | Plain JSON record: `base_model_id`, `name`, `meta`, `params`, `is_active`, `access_grants` (+ `commit_message` on update) | `GET /api/v1/models/all`, `GET /api/v1/models/export?ids=`, `POST /api/v1/models/import`, `POST /api/v1/models/sync` (bulk, **deletes**), `POST /api/v1/models/model/update` |
-| Prompts | JSON record keyed by `id`, with `command`, `content`, tags, server-side `version_id` history | `GET /api/v1/prompts/`, `GET /api/v1/prompts/id/{id}`, `POST.../update` (content, creates a history entry), `POST.../update/meta`, `DELETE.../id/{id}/delete` |
-| Skills | Markdown `content` + attached **files** (SKILL.md layout), `description`, `meta`, `is_active`, `access_grants`, `version_id` history, zip import/export | `GET /api/v1/skills/`, `GET /api/v1/skills/id/{id}`, `POST.../update`, `GET /api/v1/skills/export`, `DELETE.../id/{id}/delete`, `GET .../id/{id}/files`, history endpoints |
+| Functions | Python `content`, `name`, `meta`, `type` (filter/pipe/action), `is_active`, `is_global` | `GET /api/v1/functions/list`, `GET|POST /api/v1/functions/id/{id}[/update]`, `POST /api/v1/functions/create` |
+| Tools | Python `content` + server-generated `specs`, `name`, `meta` | `GET /api/v1/tools/`, `GET|POST /api/v1/tools/id/{id}[/update]`, `POST /api/v1/tools/create` |
+| Models | Plain JSON: `base_model_id`, `name`, `meta`, `params`, `is_active`, `access_grants`, `commit_message` on update; references KBs/files/tools by instance-local ID | `GET /api/v1/models/all`, `GET /api/v1/models/export?ids=`, `POST /api/v1/models/import` (bulk), `POST /api/v1/models/model/update`, `POST /api/v1/models/create` |
+| Prompts | JSON keyed by `id`, `command`, `content`, tags, server-side `version_id` history | `GET /api/v1/prompts/`, `GET|POST /api/v1/prompts/id/{id}[/update]`, `POST /api/v1/prompts/create` |
+| Skills | Markdown `content` + attached files (SKILL.md layout), `description`, `meta`, `is_active`, `access_grants`, `version_id`, zip import; `/import` `replace` is a whole-object rewrite | `GET /api/v1/skills/`, `GET /api/v1/skills/id/{id}`, `POST.../update`, `POST /api/v1/skills/create`, `GET /api/v1/skills/export` |
+| Automations | Record: schedule config, prompt, `model_id`, activation | `GET /api/v1/automations/list` (paginated `{total, items}`), `GET|POST /api/v1/automations/{id}[/update]`, `DELETE.../delete`; create path: verify on instance |
 
-Common rules:
-
-- All requests need the admin-API-key conventions already used (functions/manage endpoints expect administrator access; the skill import/replace paths validate `access_grants` and can filter grants the caller may not assign).
-- No server-side compare-and-swap on functions/tools/models; skills replacement (`/import` with action `replace`) requires `expected_version_id`; skills and prompts expose `version_id` we can harden with.
-- The web UI tolerates the instance owning items the key's user cannot write; fetch must handle 403 on individual items as a report, not a failure.
+Common rules: admin-key conventions, per-type access checks (403 on
+single-item reads is a report, not a failure), no server-side CAS for
+functions/tools/models; skills replacement and prompt/skill sets of
+`version_id` support optimistic concurrency where offered.
 
 ## Target layout
 
 ```
 open-webui-toolbox/
-  ow/                      # one package, one entry point
-    client.py              # raw API client (moved from cli/ow verbatim in behavior)
-    config.py              # load_config, paths, per-instance state locations
-    state.py               # sync-state format + 3-way compare
-    manage/
-      functions.py  tools.py  models.py  prompts.py  skills.py   # adapters
-  cli/ow                   # thin shim → ow, kept for one transition period
+  ow/                      # package: client, config, state, manage adapters
+  cli/ow                   # launcher shim
   customizations/
-    functions/             # <id>.py  (filters/ files move here under their IDs)
-    tools/                 # <id>.py
-    models/                # <id>.json  (canonical JSON, stable key order)
-    prompts/               # <command>.md  (frontmatter: name, tags; body = content)
-    skills/                # <skill-id>/SKILL.md + attached files (native .skill layout)
-  registry.json            # replaces functions/manifest.json: {type, id → path}
+    functions/  tools/  models/  prompts/  skills/     # one file per item
+    automations/            # promoted from "later" (see D4)
+  registry.json            # {type: {id: path}}; prompts store id+command+path
+  sync-state.json          # committed sync state (see D2)
 ```
 
 Commands after integration:
 
 ```
-ow setup                                    # unchanged
-ow get /api/...  [-d ...] [--raw]           # unchanged raw passthrough, incl. -c/-a shortcuts
-ow fetch [type...]                          # instance → files, update registry, refresh state
-ow status [type...]                         # per-item 3-way summary
-ow push [type...] [--all]                   # gated apply of local files (today's sync behavior)
+ow setup                                   # unchanged
+ow status [type...]                        # read-only three-way summary
+ow fetch [type...]                         # instance -> files + state
+ow push [type...] [--all]                  # gated apply of local files
+ow get /api/... [-d ...] [--raw]           # unchanged raw passthrough
 ```
+
+## Design decisions (recorded with provenance)
+
+Incorporates the instance-agent review of 2026-11-08. Decisions D1–D3 were
+that review's top findings; the rest follow from it.
+
+- **D1 — Two derived values per item.** *File representation* (everything,
+  for humans and git) vs *equality hash* over exactly the fields push applies
+  (functions/tools: `content`+`name`+`meta`, not `is_active`/`is_global`/`specs`;
+  models: record fields minus instance-owned; prompts: content+command+name+
+  tags, not `version_id`; skills: content+description+meta+files, not
+  `version_id`/auth fields; automations: config incl. explicit `model_id`, not
+  `updated_at`). Server-owned or push-ignored fields are *excluded from
+  comparison*, not normalized. Enforced as a declarative controlled-field list
+  per adapter, exercisable via read-only `status` with a seeded baseline. An
+  earlier single-hash state format would make `status` permanently dirty after
+  any UI edit to ignored fields.
+- **D2 — Sync state is committed in the repo.** `{local, remote}` hashes are
+  history, not derivable; outside the repo a fresh clone reads as all-changed.
+  `sync-state.json` at repo root stores hashes and IDs only. Pairing rule: a
+  change commit always carries its state update together (discipline in v1;
+  tool-side `--commit` later). Alternatives considered: derive-from-git
+  (breaks under amend/rebase), expendable external state (re-fetch + manual
+  reconcile).
+- **D3 — Prompt files stay keyed by `command`; renames get assisted adoption.**
+  Registry stores `{id, command, path}`; `status` flags "registered path
+  missing + unregistered new file" with content similarity and offers `ow
+  registry adopt`. GUID-keyed paths would make status quiet and the repo
+  hostile; a rename is a normal edit the tool should recognize.
+- **D4 — Automations promoted above prompts.** Record type, no version field,
+  silent drift; the instance review cites RRULE/name disagreements and an
+  `update_automation` silently re-pinning `model_id`. Dirty-diff gate plus
+  always-explicit `model_id` in the file.
+- **D5 — Skills file-set guard.** Push via `/import replace` deletes remote
+  files absent locally, so `push` refuses when the local folder's file set
+  differs from the last-fetched set unless `--allow-file-removal`. State
+  stores a fetched file-set fingerprint.
+- **D6 — Read-only `status` for all types before any push adapter.**
+  Normalization and equality-hash design is the load-bearing risk and is fully
+  exercised read-only; push adapters then inherit trusted adapters.
+- **D7 — Agent-facing surface split by verb.** `status`/`fetch` read-only,
+  `push` writes, raw passthrough separate. The agent-facing entry point must
+  not reach raw passthrough by import or by flag — the raw client stays
+  importable in principle but not on the agent path.
+- **D8 — Model commits carry provenance.** `commit_message` (accepted in the
+  update payload) is written with the source git SHA, so the instance's own
+  record names the commit it came from without trusting local state.
+- **D9 — Portability boundary documented.** Model records reference instance
+  KBs/files/tools by ID; the repo is authoritative for the record's own
+  fields only.
 
 ## Two-way model
 
-Per tracked item, state records the content hashes of **local file and remote
-record as of the last successful sync**: `{local_hash, remote_hash}`. Transitions:
+Per tracked item, `sync-state.json` records `file_hash` (hash of the local
+file representation as of last sync), `equality_hash` (as above), and a
+fetched-set fingerprint (D5).
 
-| Local file | Remote record | Meaning |
+| Local file | Remote record (equality hash) | Meaning |
 | --- | --- | --- |
-| == last local | == last remote | In sync (clean) |
-| changed | unchanged | Push candidate |
+| unchanged | unchanged | In sync |
+| changed | unchanged | Push candidate (with type-specific gate) |
 | unchanged | changed | Pull candidate (`status` reports; `fetch` applies) |
 | changed | changed | Conflict — reported, never auto-resolved |
-| missing local | exists | Unregistered installed item → report (optionally `--register`) |
-| exists outside registry | — | Same report; registry stays authoritative |
+| missing local | exists | Unregistered installed item → report |
+| changed | ignored-field-only change | In sync (D1: excluded from comparison) |
 
-Push gates differ by type, but the safety mechanics are shared (from today's
-`sync.py`): read the item, verify it still matches the snapshot, apply, read back
-and verify content + preserved fields, then advance state. Nonzero exit on any
-conflict/error; apply lock per instance; state never silently replaced.
+Push safety mechanics shared by all adapters (from today's `sync.py`): read
+the item, verify it still matches the snapshot, apply, read back and verify
+content plus preserved fields, then advance state. Apply lock per instance;
+nonzero exit on conflict/error; create-paths require explicit `--create`
+(#4: see endpoint table). New items are never created implicitly.
 
-- **Functions/tools**: local version must be higher than installed (docstring
+## Push gates by type
+
+- **Functions/tools**: local version must be higher (docstring
   `version: MAJOR.MINOR.PATCH`), existing name/meta/activation preserved.
-- **Models**: no version field — gate is a dirty file diff (like the push
-  contract for JSON resources); verify-after-write where the API allows.
-- **Prompts**: updating content creates a server-side history entry, so history
-  is a bonus review layer; push only when file changed.
-- **Skills**: server-side `version_id` enables real optimistic concurrency —
-  record `version_id`, refuse push when it changed (unless explicitly retried
-  with `--force-replace` to re-read and rewrite `expected_version_id`).
+- **Models**: dirty-file diff gate; `commit_message` = git SHA (D8); single
+  item fetch/update — never the bulk `/models/sync` (it deletes).
+- **Automations**: dirty-diff gate; explicit `model_id` always; re-read
+  before write.
+- **Prompts**: content push when file changed; rename → adoption flow (D3).
+- **Skills**: whole-object replace only with `expected_version_id` recorded;
+  file-set guard (D5); refusing missing files is the default.
 
-State lives outside the repo (same XDG convention as today:
-`~/.config/open-webui-cli/sync/<url-hash>.json`), one file per instance URL.
-It stores hashes and IDs only, never source.
+## Gotchas & safeguards (updated)
 
-## Adapter contract
+- Model `export` inlines `background_image_data` (base64) and avatar file
+  IDs; adapter strips payloads for git legibility (placeholder + hash).
+- `access_grants` server-validated; record, don't push (first version).
+- `is_active`/`is_global`/`type` preserved on push; excluded from equality.
+- Prompt command renames change IDs; adoption flow is user-resolved.
+- Delete is never implied by `push`; removal is explicit.
+- One checkout per instance (registry maps one path set); multi-instance
+  registries deferred.
 
-Each adapter in `ow/manage/<type>.py` implements, roughly:
+## Agent-facing surface (D7)
 
-- `list_remote()` — enumerate installed items (all pages, only what the key can read).
-- `read_remote(id)` — fetch one record (403 or missing handled as per-item report).
-- `to_file(record)` — deterministic file representation (see layout; JSON types canonicalized for stable hashes/diffs; model record fields that are instance-local — `user.id`, `updated_at`, big data URIs — normalized/hashed, see Gotchas).
-- `from_file(path)` — parse the same representation.
-- `push(record, remote, gate)` — type-specific gate (version bump vs. dirty diff) + shared check,apply,verify,advance mechanics.
+`ow status` and `ow fetch` are read-only against the instance. `ow push` is
+the only writing verb. The raw client (`ow.client`) remains importable for
+humans and scripts, but the agent-facing entry point cannot reach it — not
+behind a flag an agent can pass, just absent from that path.
 
-One shared `state.py` + one shared `fetch`/`status`/`push` driver; adapters stay
-small. Models are the only type with a foreign bulk endpoint (`/models/sync`) —
-deliberately **not** used: it deletes anything not in the payload and is too
-destructive for a hand-reviewed, file-per-item workflow.
+## Rollout (reordered per D6)
 
-## Gotchas & safeguards
-
-- **Model background images**: `/models/export` inlines `background_image_data` as base64 data URIs, and avatar references are file IDs only. Adapter strips binary payloads into side files (or placeholder + hash) so git stays reviewable; document that importing a stripped model to a *different* instance loses/rejects those.
-- **`access_grants`** can be filtered/rewritten by the server based on caller permissions. First version: record-and-preserve, do not push grant changes; revisit later.
-- **`is_active` / `is_global` / `type`** on functions: preserved on push (as today), snapshotted/reflected in fetch.
-- **Prompt command renames** create ID changes; treat rename as delete+create pairs, prompted.
-- **Delete is never implied**: `ow push` adds/updates; removing an item from Open WebUI stays manual (or a future explicit `ow delete <type> <id>`).
-- **Two instances / one checkout** is out of scope for v1; state is per-URL but the registry maps one path set — plan: one clone per instance, or later, instance-scoped registries.
-
-## Rollout
-
-1. **Phase 1 — Restructure, no behavior change.** `ow` package + `cli/ow` shim; move raw client unchanged; `registry.json` generation from `functions/manifest.json`; relocate `functions/manifest.json` users; keep test suite passing.
-2. **Phase 2 — Fetch/status core + functions & tools (pilot).** Two types, one adapter family; migrate `function-sync` baselines into the shared state format; extend simulated-API unittest pattern to fetch/status.
-3. **Phase 3 — Models.** Canonical JSON, data-URI stripping, single-item fetch/update.
-4. **Phase 4 — Prompts.** Markdown + frontmatter; server-side history note.
-5. **Phase 5 — Skills.** Folder-per-skill layout; optimistic concurrency via `version_id`/`expected_version_id`; file upload round-trip.
-6. **Later — Automations** (the client already has shortcuts) and multi-instance registries.
-
-Each phase is independently shippable; the raw client never stops working.
+1. ✅ Phase 1 — Restructure, no behavior change (done: `ow` package, shim,
+   `registry.json`; commit `8a102b0`, tag `v0.1.0`).
+2. Phase 2 — `status`, read-only, all six types: file representation,
+   canonicalization, equality-hash definition, committed `sync-state.json`
+   format, seeded-baseline tests. No writes anywhere.
+3. Phase 3 — `fetch` (instance → repo) + registry/fetch state bookkeeping;
+   `registry adopt` mechanics.
+4. Phase 4 — Push pilots: functions & tools (version gate), then automations
+   (dirty diff), models (provenance), prompts, skills (file-set guard).
+5. Phase 5 — `ow push --commit` convenience, agent-facing surface split,
+   multi-instance registries.
 
 ## Open decisions
 
-- Push authorization UX: default preview (status-style listing) with `--apply`/`push --all`? (Proposed: yes — same as today's `sync` defaults.)
-- Skill file upload strategy for fetch: which files to commit when a skill has many attachments (cap size, store large binaries out of repo or as LFS).
-- Whether `fetch` of an already-registered-but-deleted-remotely item should delete the local file or flag it (proposed: flag).
-- Feedback wanted on CLI ergonomics before Phase 2 implementation starts.
+- Skill attachments: repo-size policy for large binaries (cap, LFS, or
+  out-of-repo) — safety is handled by D5 either way.
+- Whether unregistered items get auto-registered by `fetch --register`, or
+  offered via `registry adopt` only.
+- Automation create-path endpoint needs verification on the 0.13.2 instance.
