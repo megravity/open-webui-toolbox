@@ -24,13 +24,13 @@ the versioning scheme is [SemVer](https://semver.org/spec/v2.0.0.html). See
   version-gated pushes, and post-update verification (`f307ab3`).
 - Visual style reference assets and guidance (`5240440`).
 - Integration plan (PLAN.md) for making this repository the authoritative home
-  for Open WebUI customizations (`df626c0`).
+  for Open WebUI customizations (`accc063`).
 
 ### Changed
 
 - Restructured the CLI into the `ow` package (`ow/config.py`, `ow/client.py`);
   `cli/ow` is a thin launcher shim with unchanged behavior, messages, and exit
-  codes (`455ee69`).
+  codes (`8a102b0`).
 - Function sync now reads the root `registry.json` — a JSON map of function ID
   to local source file — with duplicate-key rejection, replacing
-  `functions/manifest.json`; registry parsing covered by tests (`455ee69`).
+  `functions/manifest.json`; registry parsing covered by tests (`8a102b0`).
