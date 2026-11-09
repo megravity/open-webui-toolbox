@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "publish_daily_check_in": "filters/publish-daily-check-in/filter.py"
+  }
+}

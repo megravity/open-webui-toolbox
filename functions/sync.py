@@ -10,7 +10,6 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import sys
 import tempfile
 from urllib.error import HTTPError, URLError
@@ -18,7 +17,7 @@ from urllib.parse import quote
 from urllib.request import Request, build_opener
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST = ROOT / "functions" / "manifest.json"
+MANIFEST = ROOT / "registry.json"
 VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
@@ -39,21 +38,26 @@ def version(content):
     return tuple(map(int, values[0].split(".")))
 
 
+def read_registry_pairs(pairs):
+    """Reject duplicate keys; json.loads would silently keep the last value."""
+    keys = [key for key, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate keys in registry")
+    return dict(pairs)
+
+
 def read_manifest(path=MANIFEST):
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=read_registry_pairs)
     entries = data.get("functions") if isinstance(data, dict) else None
-    if not isinstance(entries, list) or not entries:
-        raise ValueError("manifest must contain a non-empty functions list")
-    seen = set()
+    if not isinstance(entries, dict) or not entries:
+        raise ValueError("registry must contain a non-empty functions map")
     result = []
-    for item in entries:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not ID_RE.fullmatch(item["id"]):
-            raise ValueError("invalid function ID in manifest")
-        identifier = item["id"]
-        if identifier in seen or not isinstance(item.get("path"), str):
-            raise ValueError("duplicate ID or invalid path in manifest")
-        seen.add(identifier)
-        source_path = (ROOT / item["path"]).resolve()
+    for identifier, item_path in entries.items():
+        if not isinstance(identifier, str) or not ID_RE.fullmatch(identifier):
+            raise ValueError("invalid function ID in registry")
+        if not isinstance(item_path, str):
+            raise ValueError(f"invalid source path for {identifier}")
+        source_path = (ROOT / item_path).resolve()
         if not source_path.is_relative_to(ROOT) or source_path.suffix != ".py":
             raise ValueError(f"invalid source path for {identifier}")
         content = source_path.read_text(encoding="utf-8")
@@ -215,17 +219,20 @@ def main():
     parser.add_argument("--apply", action="store_true", help="record matching baselines and apply safe updates")
     args = parser.parse_args()
     try:
-        cli = runpy.run_path(str(ROOT / "cli" / "ow"))
-        url, key = cli["load_config"]()
+        sys.path.insert(0, str(ROOT))
+        from ow.client import NoRedirects
+        from ow.config import load_config
+
+        url, key = load_config()
         state_root = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config").expanduser()
         state_file = state_root / "open-webui-cli" / "function-sync" / (digest(url) + ".json")
         entries = read_manifest()
-        api = Api(url, key, cli["NoRedirects"]())
+        api = Api(url, key, NoRedirects())
         lock = ApplyLock(state_file.with_suffix(".lock")) if args.apply else nullcontext()
         with lock:
             state = load_state(state_file)
             return sync(api, entries, state, args.apply, lambda data: save_state(state_file, data))
-    except (ValueError, OSError, RuntimeError, json.JSONDecodeError) as exc:
+    except (ImportError, ValueError, OSError, RuntimeError, json.JSONDecodeError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -111,6 +112,64 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(sync.load_state(path), self.state)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+
+class RegistryTests(unittest.TestCase):
+    def read(self, functions):
+        """Read a registry constructed around the given functions value."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "registry.json"
+            path.write_text(json.dumps({"functions": functions}), encoding="utf-8")
+            return sync.read_manifest(path)
+
+    def read_raw(self, text):
+        """Read a registry from exact text (duplicate keys stay distinct)."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "registry.json"
+            path.write_text(text, encoding="utf-8")
+            return sync.read_manifest(path)
+
+    def test_valid_registry_maps_id_to_path_with_version(self):
+        with tempfile.TemporaryDirectory(dir=sync.ROOT) as directory:
+            module = Path(directory) / "f.py"
+            module.write_text(source("1.0.0"), encoding="utf-8")
+            relative = module.relative_to(sync.ROOT).as_posix()
+            self.assertEqual(self.read({"daily": relative}),
+                             [("daily", source("1.0.0"), (1, 0, 0))])
+
+    def test_registry_rejects_list_format(self):
+        with self.assertRaises(ValueError) as context:
+            self.read([{"id": "daily", "path": "x.py"}])
+        self.assertIn("non-empty functions map", str(context.exception))
+
+    def test_registry_rejects_bad_id(self):
+        with self.assertRaises(ValueError) as context:
+            self.read({"Bad-ID": "x.py"})
+        self.assertIn("invalid function ID", str(context.exception))
+
+    def test_registry_rejects_duplicate_ids(self):
+        with self.assertRaises(ValueError) as context:
+            self.read_raw('{"functions": {"daily": "x.py", "daily": "y.py"}}')
+        self.assertIn("duplicate", str(context.exception))
+
+    def test_registry_rejects_paths_outside_repo(self):
+        for value in ("/etc/hosts.py", "../evil.py"):
+            with self.subTest(value=value), self.assertRaises(ValueError) as context:
+                self.read({"daily": value})
+            self.assertIn("invalid source path", str(context.exception))
+
+    def test_registry_rejects_non_python_source_suffix(self):
+        with self.assertRaises(ValueError) as context:
+            self.read({"daily": "not-source.sh"})
+        self.assertIn("invalid source path", str(context.exception))
+
+    def test_registry_rejects_missing_source_file(self):
+        with self.assertRaises(FileNotFoundError):
+            self.read({"daily": "missing_test_target.py"})
+
+    def test_registry_rejects_non_object(self):
+        with self.assertRaises(ValueError) as context:
+            self.read_raw("[]")
+        self.assertIn("non-empty functions map", str(context.exception))
 
 if __name__ == "__main__":
     unittest.main()

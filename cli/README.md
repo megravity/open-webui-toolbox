@@ -1,6 +1,6 @@
 # Open WebUI CLI
 
-A tiny wrapper for authenticated Open WebUI API calls. Requires Python 3 and `jq` for formatted JSON output.
+A tiny wrapper for authenticated Open WebUI API calls. Requires Python 3 and `jq` for formatted JSON output. The implementation lives in the [`ow/`](../ow/) package; `cli/ow` is a thin launcher script, and setup and usage are unchanged.
 
 ## Setup
 

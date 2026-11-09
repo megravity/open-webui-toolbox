@@ -1,8 +1,0 @@
-{
-  "functions": [
-    {
-      "id": "publish_daily_check_in",
-      "path": "filters/publish-daily-check-in/filter.py"
-    }
-  ]
-}

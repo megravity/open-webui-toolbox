@@ -1,0 +1,151 @@
+"""Small authenticated HTTP client for Open WebUI."""
+
+import argparse
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+from ow.config import load_config, setup
+
+LIST = object()
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Never forward a bearer token to a redirect target.
+        return None
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Make authenticated Open WebUI API requests.",
+        epilog="Resource shortcuts: -c / --chat and -a / --automation. "
+               "Use 'ow get --help' for examples and options."
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("setup", help="save the instance URL and API key")
+    for method in ("get", "post", "put", "patch", "delete"):
+        command = sub.add_parser(method, help=f"send a {method.upper()} request")
+        command.add_argument("path", nargs="?", help="API path, e.g. /api/models")
+        target = command.add_mutually_exclusive_group()
+        id_options = {"nargs": "?", "const": LIST} if method == "get" else {}
+        target.add_argument("-c", "--chat", metavar="CHAT_ID", help="target a chat" + ("; omit ID to list all" if method == "get" else ""), **id_options)
+        target.add_argument("-a", "--automation", metavar="AUTOMATION_ID", help="target an automation" + ("; omit ID to list all" if method == "get" else ""), **id_options)
+        command.add_argument("-d", "--data", help="JSON body, or @filename / @- for stdin")
+        command.add_argument("--raw", action="store_true", help="output the response unchanged")
+    args = parser.parse_args()
+
+    try:
+        if args.command == "setup":
+            setup()
+            return 0
+        resource = "chat" if args.chat is not None else "automation" if args.automation is not None else None
+        if (args.path is None) == (resource is None):
+            raise ValueError("provide either an API path or one resource shortcut")
+        identifier = getattr(args, resource) if resource else None
+        list_resource = identifier is LIST
+        if resource and not list_resource:
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", identifier):
+                raise ValueError(f"{resource} ID must contain only letters, numbers, hyphens, or underscores")
+            if resource == "automation" and args.command in ("put", "patch"):
+                raise ValueError("automation shortcut supports get, post, and delete; use an API path for other requests")
+            args.path = f"/api/v1/{'chats' if resource == 'chat' else 'automations'}/{identifier}"
+            if resource == "automation" and args.command in ("post", "delete"):
+                args.path += "/update" if args.command == "post" else "/delete"
+        elif list_resource:
+            args.path = "/api/v1/chats/?include_pinned=true&include_folders=true" if resource == "chat" else "/api/v1/automations/list"
+        if not args.path.startswith("/") or args.path.startswith("//") or any(c in args.path for c in "\r\n#"):
+            raise ValueError("API path must start with a single / and contain no fragment")
+        url, key = load_config()
+        body = None
+        headers = {"Authorization": f"Bearer {key}"}
+        if args.data is not None:
+            if args.data == "@-":
+                body = sys.stdin.buffer.read()
+            elif args.data.startswith("@"):
+                body = Path(args.data[1:]).read_bytes()
+            else:
+                body = args.data.encode()
+            headers["Content-Type"] = "application/json"
+        try:
+            opener = build_opener(NoRedirects)
+            def fetch(path):
+                request = Request(url + path, data=body, headers=headers, method=args.command.upper())
+                with opener.open(request, timeout=60) as response:
+                    return response.read()
+
+            if list_resource:
+                def read_json(path):
+                    try:
+                        return json.loads(fetch(path))
+                    except (ValueError, UnicodeDecodeError):
+                        raise ValueError("list endpoint returned invalid JSON") from None
+
+                items = []
+                seen = set()
+                def append_page(page):
+                    if not isinstance(page, list):
+                        raise ValueError("list endpoint returned an unexpected response")
+                    for item in page:
+                        if not isinstance(item, dict) or not isinstance(item.get("id"), str) or item["id"] in seen:
+                            raise ValueError("list endpoint returned invalid or duplicate IDs; list may have changed")
+                        seen.add(item["id"])
+                        items.append(item)
+
+                if resource == "chat":
+                    append_page(read_json(args.path))
+                page_number = 1
+                while True:
+                    path = (f"/api/v1/chats/archived?page={page_number}" if resource == "chat"
+                            else f"/api/v1/automations/list?page={page_number}")
+                    page = read_json(path)
+                    if resource == "automation":
+                        if not isinstance(page, dict) or not isinstance(page.get("total"), int):
+                            raise ValueError("automation list returned an unexpected response")
+                        total = page["total"]
+                        page = page.get("items")
+                    append_page(page)
+                    if resource == "chat" and not page:
+                        break
+                    if resource == "automation":
+                        if len(items) >= total:
+                            break
+                        if not page:
+                            raise ValueError("automation list ended before all items were returned")
+                    page_number += 1
+                output = json.dumps(items, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            else:
+                output = fetch(args.path)
+            if not args.raw:
+                try:
+                    json.loads(output)
+                except (ValueError, UnicodeDecodeError):
+                    pass  # Preserve non-JSON responses.
+                else:
+                    try:
+                        formatted = subprocess.run(
+                            ["jq", "."], input=output, capture_output=True, check=True
+                        )
+                        output = formatted.stdout
+                    except (OSError, subprocess.CalledProcessError):
+                        print("Warning: jq could not format the response; outputting it unchanged.", file=sys.stderr)
+            sys.stdout.buffer.write(output)
+        except HTTPError as exc:
+            print(f"HTTP {exc.code} {exc.reason}", file=sys.stderr, flush=True)
+            sys.stderr.buffer.write(exc.read())
+            return 1
+        except URLError as exc:
+            print(f"Connection failed: {exc.reason}", file=sys.stderr)
+            return 1
+        return 0
+    except (ValueError, OSError, EOFError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

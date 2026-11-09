@@ -1,13 +1,13 @@
 # Open WebUI function sync
 
-Preview and apply updates to registered functions on the configured Open WebUI instance. The script was designed for Open WebUI 0.12.5 and uses the [CLI's configuration](../cli/README.md); its API key must belong to an administrator. It uses Python 3.9 or newer and the standard library.
+Preview and apply updates to registered functions on the configured Open WebUI instance. The script was designed for Open WebUI 0.13.2 and uses the [CLI's configuration](../cli/README.md); its API key must belong to an administrator. It uses Python 3.9 or newer and the standard library.
 
 ```sh
 ./functions/sync.py          # Preview only
 ./functions/sync.py --apply  # Record matching baselines and apply safe updates
 ```
 
-The [manifest](manifest.json) explicitly maps each installed function ID to a local Python source file. Add an entry when another function should be managed. The source must have a module docstring containing exactly one `version: MAJOR.MINOR.PATCH` line with numeric components; pre-release and other version formats are not supported.
+The [registry](../registry.json) maps each installed function ID to a local Python source file. Add an entry to its `functions` map when another function should be managed. The source must have a module docstring containing exactly one `version: MAJOR.MINOR.PATCH` line with numeric components; pre-release and other version formats are not supported.
 
 ## How updates are checked
 
