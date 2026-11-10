@@ -123,6 +123,61 @@ that review's top findings; the rest follow from it.
   scope conflicts to one item, at the cost of a directory and a larger commit
   surface; it only pays off if you actually branch and push from both sides,
   so it is not pre-paid.
+
+  **State file shape.** One `sync-state.json` at the repo root, generated not
+  authored. It holds a `format` version, the instance URL, and per-type maps of
+  item ID to `{file, eq, version_id}` (skills add a `files` fingerprint).
+
+  ```json
+  {
+    "format": 1,
+    "instance": "http://open-webui.example:3000",
+    "items": {
+      "functions": {
+        "example_function": {
+          "file": "<sha256>",
+          "eq": "<sha256>",
+          "version_id": "00000000-0000-4000-8000-000000000000"
+        }
+      }
+    }
+  }
+  ```
+
+  The instance URL is stored in full rather than hashed: it is not a secret,
+  and it is what turns the worst silent failure — comparing instance B against
+  hashes from instance A — into a hard error instead of a tree full of phantom
+  drift.
+
+  **Invariants.** No content, no secrets, no paths (the registry owns paths,
+  or that fact has two homes). No timestamps: git records when a state change
+  landed, and timestamps in a committed file force a diff on every write.
+  Ordered keys and sorted items so diffs read like any other file. A write that
+  changes nothing is skipped, so a no-op run leaves the tree byte-identical.
+  Missing state is not corruption (see below); invalid state is a loud error,
+  never a silent reset.
+
+  **Hash definitions.** `file` is sha256 over canonical bytes — exactly what
+  the adapter renders from its parsed representation — so a reindent or key
+  reorder is not a change. That requires `* text=auto eol=lf` in
+  `.gitattributes`: `file` covers bytes, and a CRLF checkout would otherwise
+  report every item as locally changed. `eq` is sha256 over canonical JSON of
+  the adapter's projection, emitting every controlled key always; absent
+  collapses to `null` but `null` and `{}` stay distinct, because the server
+  distinguishes them (`meta` is `null` on automations, `{}` on prompts).
+
+  **Baseline establishment.** `fetch` seeds state: when a local file and the
+  remote record already agree semantically, both hashes and `version_id` are
+  recorded; when they disagree, nothing is recorded and the item is reported as
+  a conflict for a human. There is no migration from the old
+  `~/.config/open-webui-cli/function-sync/` baselines — they hold a content
+  hash without name, meta, or `version_id`, and a lossy conversion into a
+  safety mechanism is worse than none. The old files stay untouched.
+
+  **Absent state is a normal state, not an error.** `status` compares local
+  against remote directly, so a fresh clone reports accurately; items without a
+  recorded baseline read as `unbaselined`, and `push` refuses them. State only
+  has to answer *who changed first*, never *what the truth is*.
 - **D3 — Prompt files stay keyed by `command`; renames get assisted adoption.**
   Registry stores `{id, command, path}`; `status` flags "registered path
   missing + unregistered new file" with content similarity and offers `ow
