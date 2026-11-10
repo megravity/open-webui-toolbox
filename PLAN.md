@@ -40,9 +40,16 @@ not for what its references point at (see D9).
 | Automations | Record: schedule config, prompt, `model_id`, activation | `GET /api/v1/automations/list` (paginated `{total, items}`), `GET|POST /api/v1/automations/{id}[/update]`, `DELETE.../delete`; create path: verify on instance |
 
 Common rules: admin-key conventions, per-type access checks (403 on
-single-item reads is a report, not a failure), no server-side CAS for
-functions/tools/models; skills replacement and prompt/skill sets of
-`version_id` support optimistic concurrency where offered.
+single-item reads is a report, not a failure). `version_id` exists on
+functions, tools, models, prompts, and skills — **not automations** — so four
+families get optimistic concurrency and automations fall back to
+read-before-write plus re-read. List endpoints omit `content` (absent on
+functions, `null` on tools), so any comparison needs one GET per item; the
+current instance has 59 items across the six types.
+
+Tools are not one kind: the list mixes native Python tools with tool servers
+(`server:3`, `server:mcp:<id>`), which are not file-managed and must be
+filtered out and reported.
 
 ## Target layout
 
@@ -72,17 +79,30 @@ ow get /api/... [-d ...] [--raw]           # unchanged raw passthrough
 Incorporates the instance-agent review of 2026-11-08. Decisions D1–D3 were
 that review's top findings; the rest follow from it.
 
-- **D1 — Two derived values per item.** *File representation* (everything,
-  for humans and git) vs *equality hash* over exactly the fields push applies
-  (functions/tools: `content`+`name`+`meta`, not `is_active`/`is_global`/`specs`;
-  models: record fields minus instance-owned; prompts: content+command+name+
-  tags, not `version_id`; skills: content+description+meta+files, not
-  `version_id`/auth fields; automations: config incl. explicit `model_id`, not
-  `updated_at`). Server-owned or push-ignored fields are *excluded from
-  comparison*, not normalized. Enforced as a declarative controlled-field list
-  per adapter, exercisable via read-only `status` with a seeded baseline. An
-  earlier single-hash state format would make `status` permanently dirty after
-  any UI edit to ignored fields.
+- **D1 — Store what the artifact is; never store what a push would re-apply.**
+  The line is not "source vs runtime" as a judgement call. It is: fields
+  stored in a committed file are rewritten by `fetch`, so a stored *toggle*
+  becomes a `fetch` → `push` cycle that silently reverts an admin's click —
+  the same failure class as the `commit_message`/`model_id` re-pin. Stored
+  fields are identity and authorship, which push preserves and which the file
+  should simply track; discarded fields are toggles and server-derived output.
+  - **Stored in the file:** `content`/code, `id`, `name`, `type` (function
+    `filter`/`pipe`/`action` — identity, not runtime), and human-authored
+    `meta` keys (see D10).
+  - **Stored in the state file:** `version_id` as an optimistic-concurrency
+    token, plus the last-synced remote hash. Dropping `version_id` here would
+    silently discard the skills/prompts concurrency guard: push needs the
+    version it last saw, which is history, not state of the world.
+  - **Live only, reported by `status`, never stored:** `is_active`,
+    `is_global`, `specs`, timestamps, `user.id`, `access_grants`.
+  - **Residual gap, accepted:** the repo no longer describes desired
+    activation, so a fresh install on a new instance gets defaults. With two
+    instances out of scope for v1 and push preserving the flag, that is the
+    correct thing to accept. `access_grants` is in the same bucket and is
+    never stored or pushed (revisit at Phase 5, or it will be rediscovered
+    then).
+  - Automations have no `version_id`, so their push relies on read-before-write
+    and re-read rather than a token.
 - **D2 — Sync state is committed in the repo.** `{local, remote}` hashes are
   history, not derivable; outside the repo a fresh clone reads as all-changed.
   `sync-state.json` at repo root stores hashes and IDs only. Pairing rule: a
@@ -116,6 +136,28 @@ that review's top findings; the rest follow from it.
 - **D9 — Portability boundary documented.** Model records reference instance
   KBs/files/tools by ID; the repo is authoritative for the record's own
   fields only.
+- **D10 — Docstrings are the source; `meta` is largely derived.** Verified
+  against the instance on 2026-11-08: function and tool docstrings carry
+  `title`, `description`, `version`, `author`, `requirements`, and the server
+  mirrors them into `meta.manifest` and `meta.description` verbatim. So there
+  is no `meta.json` mirroring those keys — that is double-homing and would
+  drift. The file *is* the docstring, and its `description:` line is the single
+  home for description. A sidecar exists only for genuinely non-derivable,
+  UI-authored keys (`i18n`, `toggle`, `type`, `has_user_valves`), by explicit
+  allowlist; `meta.manifest` and `meta.description` are never stored and never
+  enter the equality hash.
+- **D11 — Prompt files: frontmatter carries identity, body round-trips
+  byte-exactly.** `customizations/prompts/<command>.md` with frontmatter `id`,
+  `command`, `name`, `tags`; the path is conventional-but-cosmetic, so a
+  rename is a `git mv` at your discretion rather than an identity change —
+  correlation comes from `id`, which is what makes D3's adoption flow
+  reliable. Two mechanical constraints: (a) the body is everything after the
+  closing delimiter minus exactly one newline, stored verbatim — OWUI prompt
+  content is a plain string that may legitimately begin or end with newlines,
+  which YAML folding and quoting would eat, producing a phantom content-hash
+  diff on every fetch/push cycle; (b) no PyYAML — a strict subset parser (flat
+  `key: value`, `[a, b]` lists) keeps the project dependency-free. `tomllib`
+  is not an option: it is 3.11+, and this repo targets 3.9+.
 
 ## Two-way model
 
@@ -150,13 +192,28 @@ nonzero exit on conflict/error; create-paths require explicit `--create`
 - **Skills**: whole-object replace only with `expected_version_id` recorded;
   file-set guard (D5); refusing missing files is the default.
 
-## Gotchas & safeguards (updated)
+## Gotchas & safeguards (updated against a real instance)
 
+Verified on 2026-11-08 against the configured instance (6 functions, 8 tools,
+37 models, 2 prompts, 2 skills, 4 automations):
+
+- Tools are not one kind. The list mixes native Python tools with tool
+  servers (`server:3`, `server:mcp:<id>`); servers are not file-managed and the
+  adapter filters and reports them rather than failing.
+- `meta` is `null` on automations, `{}` on prompts, and populated on
+  functions/tools/models. Canonicalization must distinguish `null` from `{}`
+  or hashes flap on every cycle.
+- Skills' `content` already contains its own YAML frontmatter (the SKILL.md
+  layout). Store it verbatim; do not wrap it in ours.
+- Single-item GETs return `write_access`; `status` can report push-ability per
+  item without a separate permission probe.
+- Automations expose `next_run_at`/`next_runs`/`last_run`/`last_run_at` —
+  runtime, live only, excluded from the projection.
 - Model `export` inlines `background_image_data` (base64) and avatar file
   IDs; adapter strips payloads for git legibility (placeholder + hash).
-- `access_grants` server-validated; record, don't push (first version).
+- `access_grants` server-validated; record, do not push (D1 bucket).
 - `is_active`/`is_global`/`type` preserved on push; excluded from equality.
-- Prompt command renames change IDs; adoption flow is user-resolved.
+- Prompt command renames change `command`; adoption flow is user-resolved.
 - Delete is never implied by `push`; removal is explicit.
 - One checkout per instance (registry maps one path set); multi-instance
   registries deferred.
@@ -174,7 +231,12 @@ behind a flag an agent can pass, just absent from that path.
    `registry.json`; commit `8a102b0`, tag `v0.1.0`).
 2. Phase 2 — `status`, read-only, all six types: file representation,
    canonicalization, equality-hash definition, committed `sync-state.json`
-   format, seeded-baseline tests. No writes anywhere.
+   format, seeded-baseline tests. No writes anywhere. Slices: (a) sanitized
+   fixture capture from the instance, (b) adapter primitives — `from_file`,
+   `to_file`, `project`, `eq_hash` — plus the table-driven
+   "server-owned field mutated → hash unchanged" test, (c) state schema v1,
+   (d) functions/tools, (e) models/prompts/automations, (f) skills file-set
+   fingerprint, (g) `ow status` wiring and rename candidates.
 3. Phase 3 — `fetch` (instance → repo) + registry/fetch state bookkeeping;
    `registry adopt` mechanics.
 4. Phase 4 — Push pilots: functions & tools (version gate), then automations
@@ -184,8 +246,17 @@ behind a flag an agent can pass, just absent from that path.
 
 ## Open decisions
 
+- **State location: D1 says "state file" while D2 says committed
+  `sync-state.json`. These appear to conflict and need an explicit ruling.**
+  D2's reasoning (hashes and `version_id` are history, not derivable, so a
+  clone without them reads as all-changed) applies equally to `version_id`,
+  so the plan currently assumes committed state. If "outside git" was
+  deliberate, D2 needs reversing and the fresh-clone behaviour needs a story.
 - Skill attachments: repo-size policy for large binaries (cap, LFS, or
   out-of-repo) — safety is handled by D5 either way.
 - Whether unregistered items get auto-registered by `fetch --register`, or
   offered via `registry adopt` only.
 - Automation create-path endpoint needs verification on the 0.13.2 instance.
+- Fixture sanitization: real records carry personal prompts, automation text,
+  and instance-local IDs. Decide the scrubbing rules (and whether fixtures
+  are committed at all) before slice 0 lands them in `tests/fixtures/`.
