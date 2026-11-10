@@ -1,0 +1,89 @@
+[
+  {
+    "created_at": 1700000000,
+    "id": "sample_filter",
+    "is_active": true,
+    "is_global": false,
+    "meta": {
+      "description": "Sample filter description used by fixture tests.",
+      "i18n": {},
+      "manifest": {
+        "author": "fixture",
+        "description": "Sample filter description used by fixture tests.",
+        "title": "Sample Filter",
+        "version": "0.1.0"
+      },
+      "toggle": false,
+      "type": "filter"
+    },
+    "name": "Sample Filter",
+    "type": "filter",
+    "updated_at": 1700003600,
+    "user": {
+      "email": "admin@example.invalid",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Sample Admin",
+      "role": "admin"
+    },
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "version_id": "11111111-1111-4111-8111-000000000001"
+  },
+  {
+    "created_at": 1700000000,
+    "id": "sample_pipe",
+    "is_active": false,
+    "is_global": true,
+    "meta": {
+      "description": "Sample pipe description used by fixture tests.",
+      "i18n": {},
+      "manifest": {
+        "author": "fixture",
+        "description": "Sample pipe description used by fixture tests.",
+        "title": "Sample Pipe",
+        "version": "0.1.0"
+      },
+      "toggle": false,
+      "type": "pipe"
+    },
+    "name": "Sample Pipe",
+    "type": "pipe",
+    "updated_at": 1700003600,
+    "user": {
+      "email": "admin@example.invalid",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Sample Admin",
+      "role": "admin"
+    },
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "version_id": "11111111-1111-4111-8111-000000000001"
+  },
+  {
+    "created_at": 1700000000,
+    "id": "sample_action",
+    "is_active": true,
+    "is_global": false,
+    "meta": {
+      "description": "Sample action description used by fixture tests.",
+      "i18n": {},
+      "manifest": {
+        "author": "fixture",
+        "description": "Sample action description used by fixture tests.",
+        "title": "Sample Action",
+        "version": "0.1.0"
+      },
+      "toggle": false,
+      "type": "action"
+    },
+    "name": "Sample Action",
+    "type": "action",
+    "updated_at": 1700003600,
+    "user": {
+      "email": "admin@example.invalid",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Sample Admin",
+      "role": "admin"
+    },
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "version_id": "11111111-1111-4111-8111-000000000001"
+  }
+]

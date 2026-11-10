@@ -89,10 +89,11 @@ that review's top findings; the rest follow from it.
   - **Stored in the file:** `content`/code, `id`, `name`, `type` (function
     `filter`/`pipe`/`action` — identity, not runtime), and human-authored
     `meta` keys (see D10).
-  - **Stored in the state file:** `version_id` as an optimistic-concurrency
-    token, plus the last-synced remote hash. Dropping `version_id` here would
-    silently discard the skills/prompts concurrency guard: push needs the
-    version it last saw, which is history, not state of the world.
+  - **Stored in the state file, committed — see D2:** `version_id` as an
+    optimistic-concurrency token, plus the last-synced remote hash. Dropping
+    `version_id` here would silently discard the skills/prompts concurrency
+    guard: push needs the version it last saw, which is history, not state of
+    the world.
   - **Live only, reported by `status`, never stored:** `is_active`,
     `is_global`, `specs`, timestamps, `user.id`, `access_grants`.
   - **Residual gap, accepted:** the repo no longer describes desired
@@ -103,13 +104,25 @@ that review's top findings; the rest follow from it.
     then).
   - Automations have no `version_id`, so their push relies on read-before-write
     and re-read rather than a token.
-- **D2 — Sync state is committed in the repo.** `{local, remote}` hashes are
-  history, not derivable; outside the repo a fresh clone reads as all-changed.
-  `sync-state.json` at repo root stores hashes and IDs only. Pairing rule: a
-  change commit always carries its state update together (discipline in v1;
-  tool-side `--commit` later). Alternatives considered: derive-from-git
-  (breaks under amend/rebase), expendable external state (re-fetch + manual
-  reconcile).
+- **D2 — Sync state is committed in the repo.** `version_id` and the
+  last-synced hashes are history, not derivable; outside the repo a fresh
+  clone reads as all-changed. `sync-state.json` at repo root stores hashes,
+  `version_id`, and IDs only. Pairing rule: a change commit always carries its
+  state update together (discipline in v1; tool-side `--commit` later).
+  Rejected alternatives, with the failure each brings:
+  - *Git as the baseline* (`remote ≠ blob at HEAD`) looks equivalent and is
+    not: commit an edit without pushing and the next `status` reports remote
+    changed when the truth is you are ahead. Every unpushed commit silently
+    reclassifies as upstream drift. Repairing it needs a reference blob "at
+    the last verified push", which is a recorded fact, not a derivable one —
+    the same wall reached from the other side. There is no fresh-clone story
+    without committed state: `status` on a clone is either lying or useless.
+  - *Derive-from-git history* breaks under amend and rebase.
+  - *Expendable external state* degrades to re-fetch plus manual reconcile.
+  Single file for now. Per-item state (`sync-state/<type>/<id>.json`) would
+  scope conflicts to one item, at the cost of a directory and a larger commit
+  surface; it only pays off if you actually branch and push from both sides,
+  so it is not pre-paid.
 - **D3 — Prompt files stay keyed by `command`; renames get assisted adoption.**
   Registry stores `{id, command, path}`; `status` flags "registered path
   missing + unregistered new file" with content similarity and offers `ow
@@ -211,7 +224,8 @@ Verified on 2026-11-08 against the configured instance (6 functions, 8 tools,
   runtime, live only, excluded from the projection.
 - Model `export` inlines `background_image_data` (base64) and avatar file
   IDs; adapter strips payloads for git legibility (placeholder + hash).
-- `access_grants` server-validated; record, do not push (D1 bucket).
+- `access_grants` is never stored and never pushed (D1 bucket). Wanting them
+  later is a D1 change, not an adapter change.
 - `is_active`/`is_global`/`type` preserved on push; excluded from equality.
 - Prompt command renames change `command`; adoption flow is user-resolved.
 - Delete is never implied by `push`; removal is explicit.
@@ -246,17 +260,11 @@ behind a flag an agent can pass, just absent from that path.
 
 ## Open decisions
 
-- **State location: D1 says "state file" while D2 says committed
-  `sync-state.json`. These appear to conflict and need an explicit ruling.**
-  D2's reasoning (hashes and `version_id` are history, not derivable, so a
-  clone without them reads as all-changed) applies equally to `version_id`,
-  so the plan currently assumes committed state. If "outside git" was
-  deliberate, D2 needs reversing and the fresh-clone behaviour needs a story.
 - Skill attachments: repo-size policy for large binaries (cap, LFS, or
   out-of-repo) — safety is handled by D5 either way.
 - Whether unregistered items get auto-registered by `fetch --register`, or
   offered via `registry adopt` only.
 - Automation create-path endpoint needs verification on the 0.13.2 instance.
-- Fixture sanitization: real records carry personal prompts, automation text,
-  and instance-local IDs. Decide the scrubbing rules (and whether fixtures
-  are committed at all) before slice 0 lands them in `tests/fixtures/`.
+
+Resolved: state location (D2 rules; D1's "state file" meant *which* file, not
+version control); `access_grants` (live only, never stored).

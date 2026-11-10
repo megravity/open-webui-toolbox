@@ -1,0 +1,125 @@
+[
+  {
+    "access_grants": [],
+    "content": null,
+    "created_at": 1700000000,
+    "has_user_valves": true,
+    "id": "sample_http_tool",
+    "is_active": true,
+    "meta": {
+      "description": "Sample tool description used by fixture tests.",
+      "has_user_valves": true,
+      "i18n": {},
+      "manifest": {
+        "author": "fixture",
+        "description": "Sample tool description used by fixture tests.",
+        "title": "Sample HTTP Tool",
+        "version": "0.1.0"
+      }
+    },
+    "name": "Sample HTTP Tool",
+    "specs": [
+      {
+        "description": "Return a sample result.\n\n:param query: Sample query string",
+        "name": "sample_op"
+      }
+    ],
+    "updated_at": 1700003600,
+    "user": {
+      "email": "admin@example.invalid",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Sample Admin",
+      "role": "admin"
+    },
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "version_id": "11111111-1111-4111-8111-000000000002"
+  },
+  {
+    "access_grants": [],
+    "content": null,
+    "created_at": 1700000000,
+    "has_user_valves": false,
+    "id": "sample_plain_tool",
+    "is_active": true,
+    "meta": {
+      "description": "A second sample tool.",
+      "has_user_valves": false,
+      "i18n": {},
+      "manifest": {
+        "author": "fixture",
+        "description": "A second sample tool.",
+        "title": "Sample Plain Tool",
+        "version": "0.1.0"
+      }
+    },
+    "name": "Sample Plain Tool",
+    "specs": [
+      {
+        "description": "Plain sample.",
+        "name": "sample_plain"
+      }
+    ],
+    "updated_at": 1700003600,
+    "user": {
+      "email": "admin@example.invalid",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Sample Admin",
+      "role": "admin"
+    },
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "version_id": "11111111-1111-4111-8111-000000000002"
+  },
+  {
+    "access_grants": [],
+    "content": null,
+    "created_at": 1700000000,
+    "has_user_valves": false,
+    "id": "server:3",
+    "is_active": true,
+    "meta": {
+      "description": "",
+      "has_user_valves": false,
+      "i18n": {}
+    },
+    "name": "",
+    "specs": [
+      {
+        "description": "Sample OpenAPI operation.",
+        "name": "openapi_op"
+      }
+    ],
+    "updated_at": 1700003600,
+    "user": {
+      "email": "admin@example.invalid",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Sample Admin",
+      "role": "admin"
+    },
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "version_id": "11111111-1111-4111-8111-000000000002"
+  },
+  {
+    "access_grants": [],
+    "content": null,
+    "created_at": 1700000000,
+    "has_user_valves": false,
+    "id": "server:mcp:sample-mcp",
+    "is_active": true,
+    "meta": {
+      "description": "",
+      "has_user_valves": false,
+      "i18n": {}
+    },
+    "name": "",
+    "specs": null,
+    "updated_at": 1700003600,
+    "user": {
+      "email": "admin@example.invalid",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Sample Admin",
+      "role": "admin"
+    },
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "version_id": "11111111-1111-4111-8111-000000000002"
+  }
+]

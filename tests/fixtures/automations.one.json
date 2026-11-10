@@ -1,0 +1,28 @@
+{
+  "created_at": 1700000000,
+  "data": {
+    "model_id": "sample-model",
+    "prompt": "Sample automation prompt. Keep it short.",
+    "rrule": "DTSTART:20260101T090000\nRRULE:FREQ=DAILY",
+    "target": null,
+    "terminal": null
+  },
+  "folder_id": null,
+  "id": "00000000-0000-4000-8000-000000000031",
+  "is_active": true,
+  "last_run": {
+    "automation_id": "00000000-0000-4000-8000-000000000031",
+    "chat_id": "00000000-0000-4000-8000-000000000022",
+    "created_at": 1700003600,
+    "error": null,
+    "id": "00000000-0000-4000-8000-000000000021",
+    "status": "success"
+  },
+  "last_run_at": 1700003600,
+  "meta": null,
+  "name": "Sample Daily Nudge",
+  "next_run_at": 1794396600000000000,
+  "next_runs": null,
+  "updated_at": 1700003600,
+  "user_id": "00000000-0000-4000-8000-000000000001"
+}
