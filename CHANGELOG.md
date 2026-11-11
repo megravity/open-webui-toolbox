@@ -8,6 +8,18 @@ the versioning scheme is [SemVer](https://semver.org/spec/v2.0.0.html). See
 
 ## [Unreleased]
 
+### Added
+
+- Canonical hashing and per-type adapters in `ow/manage/` for functions,
+  tools, models, prompts, skills, and automations: each knows its tracked file
+  format, which fields a push controls, and how to compare local against
+  remote. Server-owned and live-only fields (activation flags, `specs`,
+  `version_id`, timestamps, access grants) are excluded from comparison, so a
+  UI toggle is not misread as upstream drift.
+- `ow/state.py`, the committed `sync-state.json` format: hashes, `version_id`
+  tokens, and the instance URL, with validation, atomic writes, and no-op
+  writes that leave the tree byte-identical. No command consumes it yet.
+
 ## [0.1.0] — 2026-11-08
 
 ### Added

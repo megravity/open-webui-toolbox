@@ -86,9 +86,13 @@ that review's top findings; the rest follow from it.
   the same failure class as the `commit_message`/`model_id` re-pin. Stored
   fields are identity and authorship, which push preserves and which the file
   should simply track; discarded fields are toggles and server-derived output.
-  - **Stored in the file:** `content`/code, `id`, `name`, `type` (function
-    `filter`/`pipe`/`action` — identity, not runtime), and human-authored
-    `meta` keys (see D10).
+  - **Stored in the file:** `content`/code, `id`, and `type` (function
+    `filter`/`pipe`/`action` — identity, not runtime). `name` is stored for
+    record types (models, prompts, automations), where it is part of the JSON
+    record the file already owns, but **not** for code types: it is a
+    server-side label that is not derived from the docstring title (verified:
+    3 of 6 installed functions disagreed) and push preserves it. `meta` is not
+    stored at all (see D10).
   - **Stored in the state file, committed — see D2:** `version_id` as an
     optimistic-concurrency token, plus the last-synced remote hash. Dropping
     `version_id` here would silently discard the skills/prompts concurrency
@@ -159,12 +163,13 @@ that review's top findings; the rest follow from it.
 
   **Hash definitions.** `file` is sha256 over canonical bytes — exactly what
   the adapter renders from its parsed representation — so a reindent or key
-  reorder is not a change. That requires `* text=auto eol=lf` in
-  `.gitattributes`: `file` covers bytes, and a CRLF checkout would otherwise
-  report every item as locally changed. `eq` is sha256 over canonical JSON of
-  the adapter's projection, emitting every controlled key always; absent
-  collapses to `null` but `null` and `{}` stay distinct, because the server
-  distinguishes them (`meta` is `null` on automations, `{}` on prompts).
+  reorder is not a change. Adapters also normalize CRLF to LF on read, so a
+  CRLF checkout is not a change either; `.gitattributes` with
+  `* text=auto eol=lf` is worth adding for clean diffs but is not load-bearing.
+  `eq` is sha256 over canonical JSON of the adapter's projection, emitting
+  every controlled key always; absent collapses to `null` but `null` and `{}`
+  stay distinct, because the server distinguishes them (`meta` is `null` on
+  automations, `{}` on prompts).
 
   **Baseline establishment.** `fetch` seeds state: when a local file and the
   remote record already agree semantically, both hashes and `version_id` are
@@ -204,16 +209,24 @@ that review's top findings; the rest follow from it.
 - **D9 — Portability boundary documented.** Model records reference instance
   KBs/files/tools by ID; the repo is authoritative for the record's own
   fields only.
-- **D10 — Docstrings are the source; `meta` is largely derived.** Verified
-  against the instance on 2026-11-08: function and tool docstrings carry
-  `title`, `description`, `version`, `author`, `requirements`, and the server
-  mirrors them into `meta.manifest` and `meta.description` verbatim. So there
-  is no `meta.json` mirroring those keys — that is double-homing and would
-  drift. The file *is* the docstring, and its `description:` line is the single
-  home for description. A sidecar exists only for genuinely non-derivable,
-  UI-authored keys (`i18n`, `toggle`, `type`, `has_user_valves`), by explicit
-  allowlist; `meta.manifest` and `meta.description` are never stored and never
-  enter the equality hash.
+- **D10 — Docstrings are the source of the artifact; nothing is double-homed.**
+  Verified against the instance on 2026-11-08: function and tool docstrings
+  carry `title`, `description`, `version`, `author`, `requirements`, and the
+  server mirrors them into `meta.manifest` and `meta.description` verbatim. So
+  there is no `meta.json` and no second home for description: the tracked file
+  *is* the docstring. Authored meta the docstring cannot express (`i18n`,
+  `toggle`, `type`, `has_user_valves`) is not stored either — push reads the
+  server's current `meta`, overlays the derived fields, and sends it back, the
+  way `sync.py` already preserves name and meta. Storing a toggle would
+  reintroduce exactly the re-pin failure D1 forbids.
+  - Consequence for `name`: it is a server-side label, not derived from the
+    title (verified: 3 of 6 installed functions had a `name` that disagreed
+    with the docstring title), so code types do not store it and push
+    preserves it. Record types do store it, because it belongs to the JSON
+    record they own.
+  - Open: creating a *new* function needs `meta.type`, which now has no home
+    in the file. Creation is a separate flow (`--create`), and this needs
+    settling before that flow is built.
 - **D11 — Prompt files: frontmatter carries identity, body round-trips
   byte-exactly.** `customizations/prompts/<command>.md` with frontmatter `id`,
   `command`, `name`, `tags`; the path is conventional-but-cosmetic, so a
