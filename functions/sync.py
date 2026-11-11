@@ -12,9 +12,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, build_opener
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "registry.json"
@@ -63,27 +61,6 @@ def read_manifest(path=MANIFEST):
         content = source_path.read_text(encoding="utf-8")
         result.append((identifier, content, version(content)))
     return result
-
-
-class Api:
-    def __init__(self, base_url, key, no_redirects):
-        self.base_url = base_url
-        self.key = key
-        self.opener = build_opener(no_redirects)
-
-    def request(self, method, path, payload=None):
-        body = None if payload is None else json.dumps(payload).encode("utf-8")
-        headers = {"Authorization": f"Bearer {self.key}"}
-        if body is not None:
-            headers["Content-Type"] = "application/json"
-        request = Request(self.base_url + path, data=body, headers=headers, method=method)
-        try:
-            with self.opener.open(request, timeout=60) as response:
-                return json.loads(response.read())
-        except HTTPError as exc:
-            raise RuntimeError(f"HTTP {exc.code}") from None
-        except (URLError, OSError, ValueError) as exc:
-            raise RuntimeError(f"request failed ({type(exc).__name__})") from None
 
 
 def endpoint(identifier):
@@ -220,6 +197,7 @@ def main():
     args = parser.parse_args()
     try:
         sys.path.insert(0, str(ROOT))
+        from ow.api import Api
         from ow.client import NoRedirects
         from ow.config import load_config
 

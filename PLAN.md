@@ -315,14 +315,15 @@ behind a flag an agent can pass, just absent from that path.
 
 1. ✅ Phase 1 — Restructure, no behavior change (done: `ow` package, shim,
    `registry.json`; commit `8a102b0`, tag `v0.1.0`).
-2. Phase 2 — `status`, read-only, all six types: file representation,
+2. ✅ Phase 2 — `status`, read-only, all six types: file representation,
    canonicalization, equality-hash definition, committed `sync-state.json`
    format, seeded-baseline tests. No writes anywhere. Slices: (a) sanitized
    fixture capture from the instance, (b) adapter primitives — `from_file`,
    `to_file`, `project`, `eq_hash` — plus the table-driven
    "server-owned field mutated → hash unchanged" test, (c) state schema v1,
    (d) functions/tools, (e) models/prompts/automations, (f) skills file-set
-   fingerprint, (g) `ow status` wiring and rename candidates.
+   fingerprint, (g) `ow status` wiring and rename candidates. Done in v0.2.0
+   plus the status slice.
 3. Phase 3 — `fetch` (instance → repo) + registry/fetch state bookkeeping;
    `registry adopt` mechanics.
 4. Phase 4 — Push pilots: functions & tools (version gate), then automations

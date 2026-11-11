@@ -10,6 +10,21 @@ the versioning scheme is [SemVer](https://semver.org/spec/v2.0.0.html). See
 
 ### Added
 
+- `ow status` (`ow/status.py`): a read-only report of how the customizations in
+  `registry.json` compare with the instance. Each item is one of `in-sync`,
+  `push-candidate`, `pull-candidate`, `conflict`, `unbaselined`, `missing-local`,
+  `missing-remote`, `path-moved`, or `state-inconsistent`; installed items
+  missing from the registry are listed too. `--check` makes conflicts exit
+  nonzero for CI.
+- `ow/registry.py` reads the registry, accepting either a path or an object
+  with `path` and (for prompts) `command`, and refusing IDs that would escape
+  the repository.
+- `ow/api.py` and `ow/remote.py`: the shared authenticated client and the
+  per-type reads. `functions/sync.py` now uses the shared client instead of
+  carrying its own copy.
+
+### Added
+
 - Skills file-set fingerprint (`file_set_hash` in `ow/manage/skills.py`), built
   from `GET /api/v1/skills/id/{id}/files`. It hashes the set of attached file
   paths, so a later push can refuse a folder that lost files, while a content

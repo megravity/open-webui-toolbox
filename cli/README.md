@@ -25,6 +25,9 @@ The URL and key are stored together in `~/.config/open-webui-cli/config.json`, o
 ./ow get --automation
 ./ow get -a AUTOMATION_ID
 ./ow delete --automation AUTOMATION_ID
+./ow status
+./ow status prompts
+./ow status --check
 ./ow post /api/chat/completions -d '{"model":"MODEL_ID","messages":[{"role":"user","content":"Hello!"}]}'
 ./ow post /some/api/path -d @payload.json
 cat payload.json | ./ow post /some/api/path -d @-
@@ -32,6 +35,8 @@ cat payload.json | ./ow post /some/api/path -d @-
 ```
 
 Supported methods are `get`, `post`, `put`, `patch`, and `delete`. `-d` sends a JSON request body literally, from a file (`@filename`), or from standard input (`@-`). JSON responses are formatted with `jq` by default; use `--raw` to receive the exact response bytes (for example, for downloads or further processing). Non-JSON responses are unchanged. If `jq` is unavailable or fails, the original response is returned with a warning. HTTP errors go to standard error unchanged and produce a nonzero exit status. Redirects are not followed so credentials cannot be forwarded to another destination; use the correct base URL.
+
+`status` reports how the customizations listed in the repository's `registry.json` compare with the configured instance. It is read-only. Each item gets one verdict: `in-sync`, `push-candidate`, `pull-candidate`, `conflict`, `unbaselined` (no recorded baseline yet; run `fetch` when it exists), `missing-local`, `missing-remote`, `path-moved` (a tracked prompt file moved but kept its ID), or `state-inconsistent` (the recorded baseline matches neither side). Items installed on the instance but absent from the registry are listed as `remote-unregistered`. Pass one or more types (`functions`, `tools`, `models`, `prompts`, `skills`, `automations`) to narrow the report. The command exits 0 even when items conflict; add `--check` to exit nonzero on conflicts, for CI. Errors and inconsistent state always exit nonzero.
 
 `-c` / `--chat` and `-a` / `--automation` are shortcuts that take the place of the API path. With `get`, omit the ID to list all of that account's chats or automations. Chat lists include pinned, folder, and archived chats; automation and archived chat lists fetch every page. These list shortcuts combine responses into one JSON array, so `--raw` returns the unformatted combined array. Since pages are fetched separately, changes while listing can affect the result.
 

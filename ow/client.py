@@ -28,6 +28,9 @@ def main():
     )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("setup", help="save the instance URL and API key")
+    status = sub.add_parser("status", help="report sync status of tracked customizations")
+    status.add_argument("types", nargs="*", metavar="TYPE", help="limit to functions, tools, models, prompts, skills, or automations")
+    status.add_argument("--check", action="store_true", help="exit nonzero when a tracked item conflicts")
     for method in ("get", "post", "put", "patch", "delete"):
         command = sub.add_parser(method, help=f"send a {method.upper()} request")
         command.add_argument("path", nargs="?", help="API path, e.g. /api/models")
@@ -43,6 +46,9 @@ def main():
         if args.command == "setup":
             setup()
             return 0
+        if args.command == "status":
+            from ow.status import main as status_main
+            return status_main(args.types, args.check)
         resource = "chat" if args.chat is not None else "automation" if args.automation is not None else None
         if (args.path is None) == (resource is None):
             raise ValueError("provide either an API path or one resource shortcut")
