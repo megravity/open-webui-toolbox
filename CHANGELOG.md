@@ -8,6 +8,8 @@ the versioning scheme is [SemVer](https://semver.org/spec/v2.0.0.html). See
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-11
+
 ### Added
 
 - `ow status` (`ow/status.py`): a read-only report of how the customizations in
