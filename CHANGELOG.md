@@ -8,6 +8,8 @@ the versioning scheme is [SemVer](https://semver.org/spec/v2.0.0.html). See
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-11-11
+
 ### Added
 
 - Canonical hashing and per-type adapters in `ow/manage/` for functions,
