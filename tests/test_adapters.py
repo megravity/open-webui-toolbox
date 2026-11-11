@@ -159,5 +159,46 @@ class AdapterTests(unittest.TestCase):
                 ADAPTERS[kind].from_file("[1, 2]\n")
 
 
+class SkillFileSetTests(unittest.TestCase):
+    """The D5 guard: which files exist, not what they contain."""
+
+    def setUp(self):
+        self.hash = ADAPTERS["skills"].file_set_hash
+        self.files = load("skills.files.json")["files"]
+
+    def test_fixture_shape_matches_the_endpoint(self):
+        payload = load("skills.files.json")
+        self.assertEqual(sorted(payload), ["files", "version_id"])
+        for entry in payload["files"]:
+            self.assertEqual(sorted(entry), ["encoding", "path", "size"])
+
+    def test_order_does_not_matter(self):
+        self.assertEqual(self.hash(self.files), self.hash(list(reversed(self.files))))
+
+    def test_plain_paths_match_summaries(self):
+        paths = [entry["path"] for entry in self.files]
+        self.assertEqual(self.hash(paths), self.hash(self.files))
+
+    def test_adding_or_removing_a_file_changes_the_fingerprint(self):
+        base = self.hash(self.files)
+        self.assertNotEqual(self.hash(self.files[:-1]), base)
+        self.assertNotEqual(self.hash(self.files + [{"path": "extra.md", "size": 1}]), base)
+
+    def test_content_edits_are_not_file_set_changes(self):
+        resized = [dict(entry, size=entry["size"] + 100) for entry in self.files]
+        self.assertEqual(self.hash(resized), self.hash(self.files))
+        renamed_encoding = [dict(entry, encoding="base64") for entry in self.files]
+        self.assertEqual(self.hash(renamed_encoding), self.hash(self.files))
+
+    def test_duplicate_paths_are_rejected(self):
+        with self.assertRaises(ValueError):
+            self.hash([{"path": "SKILL.md"}, {"path": "SKILL.md"}])
+
+    def test_entries_without_a_path_are_rejected(self):
+        for entry in ({"size": 1}, "", None, 7):
+            with self.subTest(entry=entry), self.assertRaises(ValueError):
+                self.hash([entry])
+
+
 if __name__ == "__main__":
     unittest.main()

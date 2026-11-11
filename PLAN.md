@@ -195,7 +195,11 @@ that review's top findings; the rest follow from it.
 - **D5 — Skills file-set guard.** Push via `/import replace` deletes remote
   files absent locally, so `push` refuses when the local folder's file set
   differs from the last-fetched set unless `--allow-file-removal`. State
-  stores a fetched file-set fingerprint.
+  stores a fetched file-set fingerprint, which covers **paths only** — a
+  canonical sorted list, hashed — and not sizes or contents: a content edit is
+  not a file-set change, and folding sizes in would make every edit look like
+  a removal. It is read from `GET /api/v1/skills/id/{id}/files`, which returns
+  `{version_id, files: [{path, size, encoding}]}`.
 - **D6 — Read-only `status` for all types before any push adapter.**
   Normalization and equality-hash design is the load-bearing risk and is fully
   exercised read-only; push adapters then inherit trusted adapters.

@@ -8,6 +8,13 @@ the versioning scheme is [SemVer](https://semver.org/spec/v2.0.0.html). See
 
 ## [Unreleased]
 
+### Added
+
+- Skills file-set fingerprint (`file_set_hash` in `ow/manage/skills.py`), built
+  from `GET /api/v1/skills/id/{id}/files`. It hashes the set of attached file
+  paths, so a later push can refuse a folder that lost files, while a content
+  edit is not mistaken for a removal. A fixture covers the endpoint shape.
+
 ## [0.2.0] — 2026-11-11
 
 ### Added
